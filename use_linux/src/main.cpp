@@ -6,64 +6,31 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include "ntcp.h"
+
+#include "tcpserver.h"
+#include "tcpclient.h"
 
 #define MAXLINE 4096
 
 int main(int argc, char **argv)
 {
-    Ntcp *tcp = new Ntcp();
-    tcp->Server();
-
-    return 0;
-}
-
-int Run()
-{
-    int listenfd, connfd;
-    struct sockaddr_in servaddr;
-    char buff[4096], send_buf[4096];
-    int n;
-
-    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    if (argc < 1)
     {
-        printf("create socket error: %s(errno: %d)\n", strerror(errno), errno);
+        printf("Inpupt Run model server  = 1,client = 2");
         return 0;
     }
 
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(6666);
-
-    if (bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
+    int type = atoi(argv[1]);
+    if (type == 1)
     {
-        printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
+        TcpServer *server = new TcpServer();
+        server->Run();
+    }
+    else
+    {
+        TcpClient *client = new TcpClient();
+        client->Run();
     }
 
-    if (listen(listenfd, 10) == -1)
-    {
-        printf("listen socket error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
-    }
-
-    printf("======waiting for client's request======\n");
-    if ((connfd = accept(listenfd, (struct sockaddr *)NULL, NULL)) == -1)
-    {
-        printf("accept socket error: %s(errno: %d)", strerror(errno), errno);
-    }
-
-    while (1)
-    {
-        n = recv(connfd, buff, MAXLINE, 0);
-        buff[n] = '\0';
-        printf("收到客户端消息: %s\n", buff);
-        fgets(send_buf, 4096, stdin);
-        int sent = send(connfd, send_buf, strlen(send_buf) + 1, 0);
-        printf("发送消息: %s\n", send_buf);
-    }
-    close(connfd);
-    close(listenfd);
     return 0;
 }

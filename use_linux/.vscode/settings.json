@@ -1,5 +1,8 @@
 {
     "files.associations": {
-        "hello.h": "c"
-    }
+        "hello.h": "c",
+        "system_error": "cpp",
+        "limits": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "Enabled"
 }

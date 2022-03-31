@@ -44,10 +44,6 @@ int main(int argc, char** argv){
         n = recv(connfd, buff, MAXLINE, 0);
         buff[n] = '\0';
         printf("recv msg from client: %s\n", buff);
-        memcpy(buff,"Hello Vscode",5);
-        int sent = send(connfd, buff, strlen(buff) + 1, 0);
-        printf("-------------Sent %d bytes to server--------------\n", sent);
-
         close(connfd);
     }
     close(listenfd);

@@ -15,11 +15,6 @@ int main(int argc, char** argv){
     char  recvline[4096], sendline[4096];
     struct sockaddr_in  servaddr;
 
-    if( argc != 2){
-        printf("usage: ./client <ipaddress>\n");
-        return 0;
-    }
-
     if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
         printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
         return 0;
@@ -43,12 +38,22 @@ int main(int argc, char** argv){
         return 0;
     }
 
-    printf("send msg to server: \n");
-    fgets(sendline, 4096, stdin);
-    if( send(sockfd, sendline, strlen(sendline), 0) < 0){
-        printf("send msg error: %s(errno: %d)\n", strerror(errno), errno);
-        return 0;
+    while (1)
+    {
+       
+        fgets(sendline, 4096, stdin);
+        if( send(sockfd, sendline, strlen(sendline), 0) < 0){
+            printf("send msg error: %s(errno: %d)\n", strerror(errno), errno);
+            return 0;
+        }
+         printf("发送消息: %s\n", sendline);
+
+        //接收信息
+        int n = recv(sockfd, recvline, MAXLINE, 0);
+        recvline[n] = '\0';
+        printf("接收消息: %s\n", recvline);
     }
+    
     close(sockfd);
     return 0;
 }

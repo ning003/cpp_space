@@ -12,7 +12,7 @@
 int main(int argc, char** argv){
     int  listenfd, connfd;
     struct sockaddr_in  servaddr;
-    char  buff[4096];
+    char  buff[4096],send_buf[4096];
     int  n;
 
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
@@ -36,20 +36,20 @@ int main(int argc, char** argv){
     }
 
     printf("======waiting for client's request======\n");
+    if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+        printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+    }
+
     while(1){
-        if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
-            continue;
-        }
         n = recv(connfd, buff, MAXLINE, 0);
         buff[n] = '\0';
-        printf("recv msg from client: %s\n", buff);
-        memcpy(buff,"Hello Vscode",5);
-        int sent = send(connfd, buff, strlen(buff) + 1, 0);
-        printf("-------------Sent %d bytes to server--------------\n", sent);
+        printf("收到客户端消息: %s\n", buff);
+        fgets(send_buf, 4096, stdin);
+        int sent = send(connfd, send_buf, strlen(send_buf) + 1, 0);
+        printf("发送消息: %s\n", send_buf);
 
-        close(connfd);
     }
+    close(connfd);
     close(listenfd);
     return 0;
 }

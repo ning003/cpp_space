@@ -1,22 +1,33 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<errno.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
-#include<unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include "ntcp.h"
 
 #define MAXLINE 4096
 
-int main(int argc, char** argv){
-    int  listenfd, connfd;
-    struct sockaddr_in  servaddr;
-    char  buff[4096],send_buf[4096];
-    int  n;
+int main(int argc, char **argv)
+{
+    Ntcp *tcp = new Ntcp();
+    tcp->Server();
 
-    if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
-        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+    return 0;
+}
+
+int Run()
+{
+    int listenfd, connfd;
+    struct sockaddr_in servaddr;
+    char buff[4096], send_buf[4096];
+    int n;
+
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+    {
+        printf("create socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
@@ -25,29 +36,32 @@ int main(int argc, char** argv){
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(6666);
 
-    if( bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
-        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+    if (bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
+    {
+        printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
-    if( listen(listenfd, 10) == -1){
-        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+    if (listen(listenfd, 10) == -1)
+    {
+        printf("listen socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
     }
 
     printf("======waiting for client's request======\n");
-    if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-        printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+    if ((connfd = accept(listenfd, (struct sockaddr *)NULL, NULL)) == -1)
+    {
+        printf("accept socket error: %s(errno: %d)", strerror(errno), errno);
     }
 
-    while(1){
+    while (1)
+    {
         n = recv(connfd, buff, MAXLINE, 0);
         buff[n] = '\0';
         printf("收到客户端消息: %s\n", buff);
         fgets(send_buf, 4096, stdin);
         int sent = send(connfd, send_buf, strlen(send_buf) + 1, 0);
         printf("发送消息: %s\n", send_buf);
-
     }
     close(connfd);
     close(listenfd);

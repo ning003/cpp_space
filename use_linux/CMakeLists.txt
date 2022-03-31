@@ -5,7 +5,9 @@ project (demo)
 set (EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 
 aux_source_directory (src SRC_LIST)
+aux_source_directory (tcp SRC_LIST)
 
 include_directories (include)
+include_directories (tcp)
 
 add_executable (main ${SRC_LIST})

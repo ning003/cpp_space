@@ -10,7 +10,6 @@ namespace TCP {
     };
 
     #define SREVER_PORT 7777
-
 }
 
 #endif //DEF_H_

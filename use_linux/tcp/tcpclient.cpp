@@ -54,7 +54,7 @@ void *handle_recv(void *data)
             if (buffer[i] == '\n')
             {
                 // print out the message
-                cout << message_buffer << endl;
+                cout <<"<<<"<< message_buffer << endl;
 
                 // new message start
                 message_len = 0;
@@ -107,7 +107,7 @@ int TcpClient::Run()
     pthread_create(&recv_thread, NULL, handle_recv, (void *)&sockfd);
     while (1)
     {
-        printf(" 输入消息：\n");
+        printf("输入消息：\n");
         char message[BUFFER_LEN + 1];
         cin.get(message, BUFFER_LEN);
         int n = strlen(message);
@@ -146,7 +146,7 @@ int TcpClient::Run()
         int trans_len = BUFFER_LEN > n ? n : BUFFER_LEN;
 
         // send message
-        printf(" 发送消息：%s\n",message);
+        printf(">>>>：%s\n",message);
         while (n > 0)
         {
             // int len = send(sockfd, message + sent_len, trans_len, 0);

@@ -22,25 +22,25 @@ using namespace std;
 //客户端定义
 struct Client
 {
-    int online;               // to judge whether this user is online
-    int fd_id;               // user ID number
-    int socket;              // socket to this user
+    int online;    // to judge whether this user is online
+    int to_socket;     // user ID number
+    int from_socket;    // socket to this user
     char name[40]; // name of the user
 } client[USER_MAX] = {0};
 
 //互斥锁
 pthread_mutex_t num_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-
 pthread_mutex_t mutex[USER_MAX] = {0};
-pthread_cond_t cv[USER_MAX] = {0};
+//信号量
+pthread_cond_t cond_t[USER_MAX] = {0};
 
 // 玩家线程池
 pthread_t chat_thread[USER_MAX] = {0};
 pthread_t send_thread[USER_MAX] = {0};
 
 //消息队列
-queue<string> message_q[USER_MAX];
+queue<string> msg_queue[USER_MAX];
 int cur_user_num = 0;
 
 TcpServer::TcpServer(/* args */)
@@ -51,34 +51,51 @@ TcpServer::~TcpServer()
 {
 }
 
+void SendToAll(int my_socket, string msg)
+{
+    for (int j = 0; j < USER_MAX; j++)
+    {
+        if (client[j].online && client[j].from_socket != my_socket)
+        {
+            pthread_mutex_lock(&mutex[j]);
+            printf("发送给每一个玩家信号量 pthread_cond_signal %d\n", j);
+            msg_queue[j].push(msg);
+            pthread_cond_signal(&cond_t[j]);
+            pthread_mutex_unlock(&mutex[j]);
+        }
+    }
+}
+
+
 // 每个用户一个发送线程。
-void *user_send(void *data)
+void *send_msg(void *data)
 {
     struct Client *pipe = (struct Client *)data;
+    printf(" 启动发送进程 pid = %d\n", pipe->to_socket);
     while (1)
     {
-        pthread_mutex_lock(&mutex[pipe->fd_id]);
-        
+        pthread_mutex_lock(&mutex[pipe->to_socket]);
+
         //空消息
-        while (message_q[pipe->fd_id].empty())
+        while (msg_queue[pipe->to_socket].empty())
         {
-            printf("玩家%d 等待状态 \n",pipe->fd_id);
-            pthread_cond_wait(&cv[pipe->fd_id], &mutex[pipe->fd_id]);
+            printf("玩家%d 无消息进入休眠 \n", pipe->to_socket);
+            pthread_cond_wait(&cond_t[pipe->to_socket], &mutex[pipe->to_socket]);
         }
-        
+
         //有消息
-        while (!message_q[pipe->fd_id].empty())
+        while (!msg_queue[pipe->to_socket].empty())
         {
             // get the first message from the queue
-            string msg_buf = message_q[pipe->fd_id].front();
-             printf("玩家%d 发送消息的%s \n",pipe->fd_id,msg_buf.c_str());
+            string msg_buf = msg_queue[pipe->to_socket].front();
+            printf("玩家%d 发送消息的%s \n", pipe->to_socket, msg_buf.c_str());
             int n = msg_buf.length();
             // calculate one transfer length
             int trans_len = BUFFER_LEN > n ? n : BUFFER_LEN;
             // send the message
             while (n > 0)
             {
-                int len = send(pipe->socket, msg_buf.c_str(), trans_len, 0);
+                int len = send(pipe->from_socket, msg_buf.c_str(), trans_len, 0);
                 if (len < 0)
                 {
                     perror("send");
@@ -90,19 +107,18 @@ void *user_send(void *data)
             }
             // delete the message that has been sent
             msg_buf.clear();
-            message_q[pipe->fd_id].pop();
+            msg_queue[pipe->to_socket].pop();
         }
-        pthread_mutex_unlock(&mutex[pipe->fd_id]);
+        pthread_mutex_unlock(&mutex[pipe->to_socket]);
     }
     return NULL;
 }
 
-
 // get client message and push into queue
-void msg_recv(void *data)
+void UserRecvMsg(void *data)
 {
-    printf("\n rec  msg_recv===========\n");
     struct Client *pipe = (struct Client *)data;
+    printf("\n rec 消息接收函数 pid = %d==========\n", pipe->to_socket);
 
     // message buffer
     string message_buffer;
@@ -112,8 +128,8 @@ void msg_recv(void *data)
     char buffer[BUFFER_LEN + 1];
     int buffer_len = 0;
 
-    // 接收信息
-    while ((buffer_len = recv(pipe->socket, buffer, BUFFER_LEN, 0)) > 0)
+    // 所有消息接收信息
+    while ((buffer_len = recv(pipe->from_socket, buffer, BUFFER_LEN, 0)) > 0)
     {
         // to find '\n' as the end of the message
         for (int i = 0; i < buffer_len; i++)
@@ -132,19 +148,9 @@ void msg_recv(void *data)
 
             if (buffer[i] == '\n')
             {
+                printf(" 接收完成 : %s \n", buffer);
                 // send to every client
-                
-                for (int j = 0; j < USER_MAX; j++)
-                {
-                    if (client[j].online && client[j].socket != pipe->socket)
-                    {
-                        pthread_mutex_lock(&mutex[j]);
-                        printf("Send to all user rec msg pthread_cond_signal %d\n",j);
-                        message_q[j].push(message_buffer);
-                        pthread_cond_signal(&cv[j]);
-                        pthread_mutex_unlock(&mutex[j]);
-                    }
-                }
+                SendToAll(pipe->from_socket, message_buffer);
                 // new message start
                 message_len = 0;
                 message_buffer.clear();
@@ -158,66 +164,61 @@ void msg_recv(void *data)
 }
 
 
-// deal with each client
-void *user_chat_chan(void *data)
+void UserJoin(Client *pipe)
 {
-    printf("\n user_chat_chan ===========\n");
-    struct Client *pipe = (struct Client *)data;
-
     // 添加消息队列
-    char wel_buf[100];
-    sprintf(wel_buf, "Hello %s, Welcome to join the chatroom. Online User Number: %d\n", pipe->name, cur_user_num);
-    pthread_mutex_lock(&mutex[pipe->fd_id]);
-    message_q[pipe->fd_id].push(wel_buf);
+    char join_msg[100];
+    sprintf(join_msg, "Hello %s, 加入聊天，在线人数: %d\n", pipe->name, cur_user_num);
+
+    pthread_mutex_lock(&mutex[pipe->to_socket]);
+    msg_queue[pipe->to_socket].push(join_msg);
     //触发另外的线程
-    pthread_cond_signal(&cv[pipe->fd_id]);
-    pthread_mutex_unlock(&mutex[pipe->fd_id]);
+    pthread_cond_signal(&cond_t[pipe->to_socket]);
+    pthread_mutex_unlock(&mutex[pipe->to_socket]);
 
-    memset(wel_buf, 0, sizeof(wel_buf));
-    sprintf(wel_buf, "New User %s join in! Online User Number: %d\n", pipe->name, cur_user_num);
-  
-    //非本人，发送给所有人
-    for (int j = 0; j < USER_MAX; j++)
-    {
-        if (client[j].online && client[j].socket != pipe->socket)
-        {
-            pthread_mutex_lock(&mutex[j]);
-            message_q[j].push(wel_buf);
-            pthread_cond_signal(&cv[j]);
-            pthread_mutex_unlock(&mutex[j]);
-        }
-    }
+    memset(join_msg, 0, sizeof(join_msg));
+    sprintf(join_msg, "加入用户 %s 在线人数: : %d\n", pipe->name, cur_user_num);
+    string hell_str = join_msg;
+    SendToAll(pipe->from_socket, hell_str);
+}
 
-    // 创建一个socket 对应的发送线程
-    pthread_create(&send_thread[pipe->fd_id], NULL, user_send, (void *)pipe);
-
-    //接收数据
-    msg_recv(data);
-
-    // because the recv() function is blocking, so when msg_recv() return, it means this user is offline
+void UserQuit(Client *pipe)
+{
+    //消息接收阻塞，如果不在阻塞说明用户退出
     pthread_mutex_lock(&num_mutex);
     pipe->online = 0;
     cur_user_num--;
     pthread_mutex_unlock(&num_mutex);
-    // printf bye message
-    printf("%s left the chatroom. Online Person Number: %d\n", pipe->name, cur_user_num);
-    char bye[100];
-    sprintf(bye, "%s left the chatroom. Online Person Number: %d\n", pipe->name, cur_user_num);
-    // send offline message to other clients
-    for (int j = 0; j < USER_MAX; j++)
-    {
-        if (client[j].online && client[j].socket != pipe->socket)
-        {
-            pthread_mutex_lock(&mutex[j]);
-            message_q[j].push(bye);
-            pthread_cond_signal(&cv[j]);
-            pthread_mutex_unlock(&mutex[j]);
-        }
-    }
 
-    pthread_mutex_destroy(&mutex[pipe->fd_id]);
-    pthread_cond_destroy(&cv[pipe->fd_id]);
-    pthread_cancel(send_thread[pipe->fd_id]);
+    printf("%s 用户退出，在线人数:  %d\n", pipe->name, cur_user_num);
+
+    char out_msg[100];
+    sprintf(out_msg, "%s 用户退出，在线人数: %d\n", pipe->name, cur_user_num);
+    string msg = out_msg;
+    SendToAll(pipe->from_socket, msg);
+
+    pthread_mutex_destroy(&mutex[pipe->to_socket]);
+    pthread_cond_destroy(&cond_t[pipe->to_socket]);
+    pthread_cancel(send_thread[pipe->to_socket]);
+}
+
+
+// deal with each client
+void *user_chat_chan(void *data)
+{
+    struct Client *pipe = (struct Client *)data;
+    printf("\n 启动用户聊天线程 pid = %d ===========\n", pipe->to_socket);
+
+    UserJoin(pipe);
+
+    // 发送消息线程，通过信号量去控制发送消息
+    pthread_create(&send_thread[pipe->to_socket], NULL, send_msg, (void *)pipe);
+
+    //接收数据
+    UserRecvMsg(data);
+
+    //消息接收阻塞，如果不在阻塞说明用户退出
+    UserQuit(pipe);
 
     return NULL;
 }
@@ -273,39 +274,38 @@ int TcpServer::Run()
         }
         else
         {
-            if (send(connfd, "OK  ", strlen("OK  "), 0) < 0)
-                perror("send");
+            // if (send(connfd, "OK  ", strlen("OK  "), 0) < 0)
+            //     perror("send");
         }
 
         // n = recv(connfd, buff, MAXLINE, 0);
         // buff[n] = '\0';
         // printf("收到客户端消息: %s\n", buff);
 
-
         //添加用户
-        for (int i = 0;i < USER_MAX; i++)
+        for (int i = 0; i < USER_MAX; i++)
         {
             // printf("ning run ...%d\n",i);
             //未使用客户端结构体
-            if(! client[i].online)
+            if (!client[i].online)
             {
                 pthread_mutex_lock(&num_mutex);
-                memset(client[i].name,0,sizeof(client[i].name));
-                std::string str = "ning_" + i;
-                strcpy(client[i].name,str.c_str());
+                memset(client[i].name, 0, sizeof(client[i].name));
+                std::string str = "userID_" + std::to_string(i);
+                strcpy(client[i].name, str.c_str());
 
                 client[i].online = 1;
-                client[i].fd_id = i;
-                client[i].socket = connfd;
+                client[i].to_socket = i;
+                client[i].from_socket = connfd;
 
                 mutex[i] = PTHREAD_MUTEX_INITIALIZER;
-                cv[i] = PTHREAD_COND_INITIALIZER;
-                
+                cond_t[i] = PTHREAD_COND_INITIALIZER;
+
                 cur_user_num++;
                 pthread_mutex_unlock(&num_mutex);
 
                 pthread_create(&chat_thread[i], NULL, user_chat_chan, (void *)&client[i]);
-                printf("%s join in the chatroom. Online User: %d\n", client[i].name, cur_user_num);
+                printf("%s 进入聊天室.在线人数: %d\n", client[i].name, cur_user_num);
 
                 break;
             }
@@ -314,7 +314,7 @@ int TcpServer::Run()
 
     for (int i = 0; i < USER_MAX; i++)
         if (client[i].online)
-            shutdown(client[i].socket, 2);
+            shutdown(client[i].from_socket, 2);
     shutdown(connfd, 2);
     close(connfd);
     close(listenfd);

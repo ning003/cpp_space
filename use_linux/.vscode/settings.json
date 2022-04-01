@@ -2,7 +2,10 @@
     "files.associations": {
         "hello.h": "c",
         "system_error": "cpp",
-        "limits": "cpp"
+        "limits": "cpp",
+        "functional": "cpp",
+        "new": "cpp",
+        "type_traits": "cpp"
     },
     "C_Cpp.errorSquiggles": "Enabled"
 }

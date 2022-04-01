@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include<arpa/inet.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include <limits>
 
@@ -16,10 +16,11 @@
 using namespace std;
 
 #define MAXLINE 4096
-#define BUFFER_LEN 1024
+#define CHAT_LEN 1024
 
 TcpClient::TcpClient(/* args */)
 {
+    m_sockfd = 0;
 }
 
 TcpClient::~TcpClient()
@@ -35,11 +36,11 @@ void *handle_recv(void *data)
     int message_len = 0;
 
     // one transfer buffer
-    char buffer[BUFFER_LEN + 1];
+    char buffer[CHAT_LEN + 1];
     int buffer_len = 0;
 
     // receive
-    while ((buffer_len = recv(pipe, buffer, BUFFER_LEN, 0)) > 0)
+    while ((buffer_len = recv(pipe, buffer, CHAT_LEN, 0)) > 0)
     {
         // to find '\n' as the end of the message
         for (int i = 0; i < buffer_len; i++)
@@ -54,7 +55,7 @@ void *handle_recv(void *data)
             if (buffer[i] == '\n')
             {
                 // print out the message
-                cout <<"<<<"<< message_buffer << endl;
+                cout << message_buffer << endl;
 
                 // new message start
                 message_len = 0;
@@ -63,23 +64,19 @@ void *handle_recv(void *data)
         }
         memset(buffer, 0, sizeof(buffer));
     }
-    // because the recv() function is blocking, so when the while() loop break, it means the server is offline
-    printf("The Server has been shutdown!\n");
-    return NULL;
 
-        // // 接收信息
-        // int n = recv(sockfd, rec_buf, MAXLINE, 0);
-        // rec_buf[n] = '\0';
-        // printf("接收消息: %s\n", rec_buf);
+    printf("服务器关闭\n");
+    close(pipe);
+    return NULL;
 }
 
 int TcpClient::Run()
 {
-    int sockfd, n;
+    int n;
     char recvline[4096], send_buf[4096];
     struct sockaddr_in servaddr;
 
-    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if ((m_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         printf("create socket error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
@@ -96,7 +93,7 @@ int TcpClient::Run()
         return 0;
     }
 
-    if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+    if (connect(m_sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     {
         printf("connect error: %s(errno: %d)\n", strerror(errno), errno);
         return 0;
@@ -104,13 +101,16 @@ int TcpClient::Run()
 
     printf(" Run Client =========\n");
     pthread_t recv_thread;
-    pthread_create(&recv_thread, NULL, handle_recv, (void *)&sockfd);
+    pthread_create(&recv_thread, NULL, handle_recv, (void *)&m_sockfd);
     while (1)
     {
+        MsgData msg;
+        msg.msg_type = MSG_NAME;
+
         printf("输入消息：\n");
-        char message[BUFFER_LEN + 1];
-        cin.get(message, BUFFER_LEN);
-        int n = strlen(message);
+        // char message[CHAT_LEN + 1];
+        cin.get(msg.data, MSG_LEN);
+        int input_len = strlen(msg.data);
         if (cin.eof())
         {
             // reset
@@ -119,14 +119,14 @@ int TcpClient::Run()
             continue;
         }
         // single enter
-        else if (n == 0)
+        else if (input_len == 0)
         {
             // reset
             cin.clear();
             clearerr(stdin);
         }
         // overflow
-        if (n > BUFFER_LEN - 2)
+        if (input_len > CHAT_LEN - 2)
         {
             // reset
             cin.clear();
@@ -134,40 +134,49 @@ int TcpClient::Run()
             printf("Reached the upper limit of the words!\n");
             continue;
         }
-        cin.get();         // remove '\n' in stdin
-        message[n] = '\n'; // add '\n'
-        message[n + 1] = '\0';
-        // the length of message now is n+1
-        n++;
+        cin.get();                  // remove '\n' in stdin
+        msg.data[input_len] = '\n'; // add '\n'
+        msg.data[input_len + 1] = '\0';
+        input_len++;
         printf("\n");
-        // the length of message that has been sent
-        int sent_len = 0;
-        // calculate one transfer length
-        int trans_len = BUFFER_LEN > n ? n : BUFFER_LEN;
 
         // send message
-        printf(">>>>：%s\n",message);
-        while (n > 0)
-        {
-            // int len = send(sockfd, message + sent_len, trans_len, 0);
-            int len = send(sockfd, message, trans_len, 0);
-            if (len < 0)
-            {
-                perror("send");
-                return -1;
-            }
-            // if one transfer has not sent the full message, then send the remain message
-            n -= len;
-            sent_len += len;
-            trans_len = BUFFER_LEN > n ? n : BUFFER_LEN;
-        }
+        printf(">>>>：%s\n", msg.data);
+        SendMsg(msg, input_len);
         // clean the buffer
-        memset(message, 0, sizeof(message));
+        memset(msg.data, 0, sizeof(msg.data));
     }
 
     pthread_cancel(recv_thread);
-    close(sockfd);
+    close(m_sockfd);
     return 0;
 }
 
+int TcpClient::SendMsg(MsgData msg, int msg_len)
+{
+    //组装协议
+    string send_str = msg.data;
+    send_str.insert(0, "|");
+    send_str.insert(0, to_string(msg.msg_type));
+    msg_len = msg_len + 2;
+  
+    int offset_len = 0;
+    int send_len = CHAT_LEN > msg_len ? msg_len : CHAT_LEN;
 
+    // send message
+    printf(">>>>：%s\n", send_str.c_str());
+    while (msg_len > 0)
+    {
+        int ok_len = send(m_sockfd, send_str.c_str() + offset_len, send_len, 0);
+        if (ok_len < 0)
+        {
+            perror("send");
+            return -1;
+        }
+
+        //按1024为一段发送
+        msg_len -= ok_len;
+        offset_len += ok_len;
+        send_len = CHAT_LEN > msg_len ? msg_len : CHAT_LEN;
+    }
+}

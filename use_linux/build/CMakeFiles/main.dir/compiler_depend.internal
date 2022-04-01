@@ -89,6 +89,7 @@ CMakeFiles/main.dir/src/main.cpp.o
  /usr/include/bits/getopt_core.h
  /home/ning/cpp/use_linux/tcp/tcpserver.h
  /home/ning/cpp/use_linux/tcp/tcpclient.h
+ /home/ning/cpp/use_linux/tcp/def.h
 
 CMakeFiles/main.dir/src/nfork.cpp.o
  /home/ning/cpp/use_linux/src/nfork.cpp
@@ -258,14 +259,6 @@ CMakeFiles/main.dir/src/nfork.cpp.o
  /usr/include/c++/8/bits/ostream.tcc
  /usr/include/c++/8/istream
  /usr/include/c++/8/bits/istream.tcc
-
-CMakeFiles/main.dir/tcp/client.cpp.o
- /home/ning/cpp/use_linux/tcp/client.cpp
- /usr/include/stdc-predef.h
-
-CMakeFiles/main.dir/tcp/server.cpp.o
- /home/ning/cpp/use_linux/tcp/server.cpp
- /usr/include/stdc-predef.h
 
 CMakeFiles/main.dir/tcp/tcpclient.cpp.o
  /home/ning/cpp/use_linux/tcp/tcpclient.cpp
